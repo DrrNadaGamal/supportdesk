@@ -86,7 +86,15 @@ async function doPull() {
     const res = await fetch(`${url}?v=${encodeURIComponent(v)}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`blob fetch ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
-    fs.writeFileSync(LOCAL, buf); // overwrite in place so open connections see it
+    // overwrite in place (same inode, no truncate first) so open connections see it
+    // and a concurrent reader never sees an empty file
+    const fd = fs.openSync(LOCAL, fs.existsSync(LOCAL) ? "r+" : "w");
+    try {
+      fs.writeSync(fd, buf, 0, buf.length, 0);
+      fs.ftruncateSync(fd, buf.length);
+    } finally {
+      fs.closeSync(fd);
+    }
     version = v;
     markStale();
   } catch (e) {
