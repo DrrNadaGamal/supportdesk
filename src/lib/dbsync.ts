@@ -36,8 +36,8 @@ async function push(): Promise<string> {
     contentType: "application/octet-stream",
     cacheControlMaxAge: 60,
   });
-  const h = await head(blob.url);
-  version = `${h.uploadedAt.getTime()}:${h.size}`;
+  // head() can lag behind a fresh put, so stamp the version ourselves
+  version = `${Date.now()}:${body.length}`;
   return `${version}|${blob.url}`;
 }
 
