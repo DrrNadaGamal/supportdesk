@@ -20,8 +20,13 @@ if (process.env.VERCEL) {
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
+const base = new PrismaClient();
+// after the shared DB file is replaced, drop pooled connections so SQLite
+// cannot keep serving cached pages from the previous copy
+(globalThis as { __sdReconnect?: () => Promise<void> }).__sdReconnect = () => base.$disconnect();
+
 const makeClient = () =>
-  new PrismaClient().$extends({
+  base.$extends({
     query: {
       async $allOperations({ args, query }) {
         await pullDb(); // hosted demo: load the shared database copy if it changed

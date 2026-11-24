@@ -97,6 +97,7 @@ async function doPull() {
     }
     version = v;
     markStale();
+    await (globalThis as { __sdReconnect?: () => Promise<void> }).__sdReconnect?.();
   } catch (e) {
     console.error("pullDb failed", e);
   }
