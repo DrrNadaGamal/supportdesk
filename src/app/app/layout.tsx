@@ -3,6 +3,7 @@ import { currentAgent } from "@/lib/session";
 import { getLocale } from "@/lib/locale-server";
 import { t } from "@/lib/i18n";
 import { ensureFresh } from "@/lib/fresh";
+import DemoNotice from "@/components/DemoNotice";
 import Sidebar from "@/components/Sidebar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="shell">
       <Sidebar locale={locale} name={agent.name} color={agent.color} role={agent.role} />
       <main className="main">
+        <DemoNotice />
         {children}
         <p className="muted small footnote" style={{ textAlign: "center" }}>{t(locale, "footer_demo")}</p>
       </main>

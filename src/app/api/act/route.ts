@@ -26,6 +26,17 @@ export async function POST(req: NextRequest) {
   const secure = req.nextUrl.protocol === "https:";
   const cookieOpts = { path: "/", sameSite: "lax" as const, httpOnly: true, secure };
 
+  // Hosted demo: each serverless route has its own temporary copy of the demo
+  // database, so writes made on one page are not visible on the next. Writes
+  // are disabled there; run the app locally for the full interactive flow.
+  const READ_ONLY = !!process.env.VERCEL && !process.env.SUPPORTDESK_WRITABLE;
+  const WRITES = ["ticket_create", "customer_reply", "rate", "helpful", "ticket_reply", "ticket_update", "assign_me", "article_save", "article_delete", "canned_save", "canned_delete"];
+  if (READ_ONLY && WRITES.includes(intent)) {
+    const res = back(req, "/");
+    res.cookies.set("sd_notice", "readonly", { path: "/", maxAge: 10 });
+    return res;
+  }
+
   switch (intent) {
     case "locale": {
       const res = back(req, "/");

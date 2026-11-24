@@ -83,4 +83,4 @@ The demo login is role selection, not authentication. All names, companies and t
 
 ## Hosted demo
 
-Live demo: see the repository description. It runs on seeded data. Because the hosting filesystem is read-only, the demo database is copied to temporary storage, so changes reset when the server restarts. Timestamps in the seed are shifted on startup so the dashboard always looks current.
+Live demo: https://supportdesk-orpin-mu.vercel.app (sign in as any demo agent on `/login`). It runs on seeded data and is **read-only**: serverless hosting gives every route its own temporary copy of the demo database, so a ticket created on one page would not be visible on the next. Browsing, filtering, search, language switching and role-based views all work. To create tickets, reply, assign and edit the knowledge base, run it locally (steps above). The seeded timestamps are shifted on startup so the dashboard always looks current. A production deployment would point Prisma at Postgres.
