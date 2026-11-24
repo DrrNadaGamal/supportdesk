@@ -34,7 +34,7 @@ export default function ReplyBox(props: {
           <button type="button" className={mode === "note" ? "on" : ""} onClick={() => setMode("note")}>{labels.note}</button>
         </div>
         {mode === "reply" && props.canned.length > 0 && (
-          <select className="select" style={{ width: "auto", maxWidth: 260 }} defaultValue="" onChange={(e) => { insert(e.target.value); e.target.value = ""; }} aria-label={labels.insert}>
+          <select className="select" style={{ width: "auto", maxWidth: "100%" }} defaultValue="" onChange={(e) => { insert(e.target.value); e.target.value = ""; }} aria-label={labels.insert}>
             <option value="">{labels.pick}</option>
             {props.canned.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
           </select>

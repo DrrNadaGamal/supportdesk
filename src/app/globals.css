@@ -34,6 +34,8 @@ h2 { font-size: 17px; font-weight: 700; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
 .card-pad { padding: 18px 20px; }
 .stack { display: flex; flex-direction: column; gap: 16px; }
+.stack > *, .grid > * { min-width: 0; }
+.select { max-width: 100%; }
 .row { display: flex; align-items: center; gap: 10px; }
 .row-wrap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .spread { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -172,7 +174,7 @@ table.t tbody tr:hover { background: #fafbff; }
 
 @media (max-width: 1100px) {
   .grid-kpi { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .grid-ticket { grid-template-columns: 1fr; }
+  .grid-ticket { grid-template-columns: minmax(0, 1fr); }
   .grid-2 { grid-template-columns: 1fr; }
   .filters { grid-template-columns: 1fr 1fr; }
 }
@@ -186,6 +188,7 @@ table.t tbody tr:hover { background: #fafbff; }
   .side-foot .who { display: none; }
   .main { padding: 18px 14px 30px; }
   .grid-3 { grid-template-columns: 1fr; }
+  .hero::after, [dir="rtl"] .hero::after { background: linear-gradient(180deg, #121046d9 0%, #151452b3 100%); }
   .hero h1 { font-size: 30px; }
   .hero .in { padding: 44px 18px 54px; }
   .pub-head .in { flex-wrap: wrap; gap: 8px 12px; padding: 10px 14px; }
