@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import fs from "node:fs";
 import path from "node:path";
+import { pullDb } from "./dbsync";
 
 // Hosted demo mode (Vercel): the serverless filesystem is read-only, so the
 // pre-seeded SQLite demo database is copied to /tmp on cold start. Changes
@@ -19,6 +20,16 @@ if (process.env.VERCEL) {
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
+const makeClient = () =>
+  new PrismaClient().$extends({
+    query: {
+      async $allOperations({ args, query }) {
+        await pullDb(); // hosted demo: load the shared database copy if it changed
+        return query(args);
+      },
+    },
+  });
+
+export const prisma = (globalForPrisma.prisma ?? makeClient()) as unknown as PrismaClient;
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

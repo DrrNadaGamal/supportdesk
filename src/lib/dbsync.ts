@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { put, head } from "@vercel/blob";
-import { markStale } from "./fresh";
 
 // Hosted-demo persistence. On Vercel every serverless route has its own
 // temporary filesystem, so the SQLite demo database is kept as one file in a
@@ -13,6 +12,11 @@ const LOCAL = "/tmp/supportdesk-demo.db";
 const BLOB_PATH = "supportdesk/demo.db";
 const MAX_AGE_MS = 6 * 3600_000; // auto-reset of visitor changes
 let version = "";
+let inflight: Promise<void> | null = null;
+let lastCheck = 0;
+const markStale = () => {
+  (globalThis as { __sdStale?: boolean }).__sdStale = true;
+};
 
 export const syncEnabled = () => !!process.env.VERCEL && !!process.env.BLOB_READ_WRITE_TOKEN;
 
@@ -33,8 +37,18 @@ async function push() {
   version = `${h.uploadedAt.getTime()}:${h.size}`;
 }
 
-export async function pullDb() {
-  if (!syncEnabled()) return;
+export function pullDb(): Promise<void> {
+  if (!syncEnabled()) return Promise.resolve();
+  if (inflight) return inflight;
+  if (Date.now() - lastCheck < 300) return Promise.resolve();
+  inflight = doPull().finally(() => {
+    lastCheck = Date.now();
+    inflight = null;
+  });
+  return inflight;
+}
+
+async function doPull() {
   try {
     let h: Awaited<ReturnType<typeof head>> | null = null;
     try {
