@@ -1,44 +1,54 @@
 import fs from "node:fs";
 import path from "node:path";
-import { put, head } from "@vercel/blob";
+import { put, list, del } from "@vercel/blob";
 import { cookies } from "next/headers";
 
 // Hosted-demo persistence. On Vercel every serverless route has its own
-// temporary filesystem, so the SQLite demo database is kept as one file in a
-// Vercel Blob store: it is pulled before a page renders (only when it changed)
-// and pushed after every write. Last writer wins, which is fine for a demo.
-// A production deployment would use Postgres instead. See README.
+// temporary filesystem, so the SQLite demo database is kept in a Vercel Blob
+// store. Each write uploads a new immutable copy (supportdesk/db-<time>.db);
+// requests load the newest copy when it changed. Last writer wins, which is
+// fine for a demo. A production deployment would use Postgres. See README.
 
 const LOCAL = "/tmp/supportdesk-demo.db";
-const BLOB_PATH = "supportdesk/demo.db";
+const PREFIX = "supportdesk/db-";
 const MAX_AGE_MS = 6 * 3600_000; // auto-reset of visitor changes
-let version = "";
+export const COOKIE = "sd_db";
+let version = 0;
 let inflight: Promise<void> | null = null;
 let lastCheck = 0;
+
+type G = { __sdStale?: boolean; __sdReconnect?: () => Promise<void> };
+const g = globalThis as G;
 const markStale = () => {
-  (globalThis as { __sdStale?: boolean }).__sdStale = true;
+  g.__sdStale = true;
 };
 
 export const syncEnabled = () => !!process.env.VERCEL && !!process.env.BLOB_READ_WRITE_TOKEN;
+const bundled = () => path.join(process.cwd(), "prisma", "demo.db");
+const stampOf = (pathname: string) => Number(pathname.slice(PREFIX.length).replace(".db", "")) || 0;
 
-function bundled() {
-  return path.join(process.cwd(), "prisma", "demo.db");
+async function newest() {
+  const { blobs } = await list({ prefix: PREFIX, limit: 100 });
+  const sorted = blobs.map((b) => ({ t: stampOf(b.pathname), url: b.url, pathname: b.pathname })).sort((a, b) => b.t - a.t);
+  return { latest: sorted[0] ?? null, all: sorted };
 }
-
-export const COOKIE = "sd_db";
 
 async function push(): Promise<string> {
   const body = fs.readFileSync(LOCAL);
-  const blob = await put(BLOB_PATH, body, {
+  const t = Date.now();
+  const blob = await put(`${PREFIX}${t}.db`, body, {
     access: "public",
-    allowOverwrite: true,
     addRandomSuffix: false,
     contentType: "application/octet-stream",
-    cacheControlMaxAge: 60,
   });
-  // head() can lag behind a fresh put, so stamp the version ourselves
-  version = `${Date.now()}:${body.length}`;
-  return `${version}|${blob.url}`;
+  version = t;
+  // keep only the two newest copies
+  try {
+    const { all } = await newest();
+    const old = all.slice(2).map((b) => b.url);
+    if (old.length) await del(old);
+  } catch {}
+  return `${t}|${blob.url}`;
 }
 
 export function pullDb(): Promise<void> {
@@ -52,52 +62,49 @@ export function pullDb(): Promise<void> {
   return inflight;
 }
 
+function overwriteLocal(buf: Buffer) {
+  // same inode, no truncate first, so open connections see it and a concurrent
+  // reader never sees an empty file
+  const fd = fs.openSync(LOCAL, fs.existsSync(LOCAL) ? "r+" : "w");
+  try {
+    fs.writeSync(fd, buf, 0, buf.length, 0);
+    fs.ftruncateSync(fd, buf.length);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 async function doPull() {
   try {
-    let h: Awaited<ReturnType<typeof head>> | null = null;
-    try {
-      h = await head(BLOB_PATH);
-    } catch {
-      h = null;
-    }
-    if (!h || Date.now() - h.uploadedAt.getTime() > MAX_AGE_MS) {
-      // first run, or visitor changes are older than the retention window: reset
-      if (!fs.existsSync(LOCAL)) fs.copyFileSync(bundled(), LOCAL);
-      fs.copyFileSync(bundled(), LOCAL);
-      markStale();
-      await push();
-      return;
-    }
-    let v = `${h.uploadedAt.getTime()}:${h.size}`;
-    let url = h.url;
-    // read-your-writes: the browser carries the version its own last write produced,
-    // in case the blob metadata lookup has not caught up yet
+    const { latest } = await newest().catch(() => ({ latest: null }));
+    let t = latest?.t ?? 0;
+    let url = latest?.url ?? "";
+    // read-your-writes: the browser carries the copy its own last write produced
     try {
       const c = (await cookies()).get(COOKIE)?.value;
       if (c) {
-        const [cv, cu] = c.split("|");
-        if (Number(cv.split(":")[0]) > h.uploadedAt.getTime() && cu.includes(".blob.vercel-storage.com")) {
-          v = cv;
+        const [ct, cu] = c.split("|");
+        if (Number(ct) > t && cu?.includes(".blob.vercel-storage.com")) {
+          t = Number(ct);
           url = cu;
         }
       }
     } catch {}
-    if (v === version && fs.existsSync(LOCAL)) return;
-    const res = await fetch(`${url}?v=${encodeURIComponent(v)}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`blob fetch ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    // overwrite in place (same inode, no truncate first) so open connections see it
-    // and a concurrent reader never sees an empty file
-    const fd = fs.openSync(LOCAL, fs.existsSync(LOCAL) ? "r+" : "w");
-    try {
-      fs.writeSync(fd, buf, 0, buf.length, 0);
-      fs.ftruncateSync(fd, buf.length);
-    } finally {
-      fs.closeSync(fd);
+    if (!t || Date.now() - t > MAX_AGE_MS) {
+      // first run, or visitor changes are older than the retention window: reset
+      fs.copyFileSync(bundled(), LOCAL);
+      markStale();
+      await push();
+      await g.__sdReconnect?.();
+      return;
     }
-    version = v;
+    if (t === version && fs.existsSync(LOCAL)) return;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`blob fetch ${res.status}`);
+    overwriteLocal(Buffer.from(await res.arrayBuffer()));
+    version = t;
     markStale();
-    await (globalThis as { __sdReconnect?: () => Promise<void> }).__sdReconnect?.();
+    await g.__sdReconnect?.();
   } catch (e) {
     console.error("pullDb failed", e);
   }
