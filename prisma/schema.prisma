@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String   @default("AGENT") // ADMIN | AGENT
+  color     String   @default("#4f46e5")
+  title     String   @default("Support agent")
+  titleAr   String   @default("وكيل دعم")
+  tickets   Ticket[]
+  messages  Message[]
+}
+
+model Customer {
+  id       String   @id @default(cuid())
+  name     String
+  email    String   @unique
+  company  String
+  plan     String   @default("Team") // Free | Team | Business | Enterprise
+  lang     String   @default("en")
+  tickets  Ticket[]
+  messages Message[]
+}
+
+model Category {
+  id       String    @id @default(cuid())
+  slug     String    @unique
+  nameEn   String
+  nameAr   String
+  color    String    @default("#6366f1")
+  tickets  Ticket[]
+  articles Article[]
+}
+
+model Ticket {
+  id               String    @id @default(cuid())
+  number           Int       @unique
+  subject          String
+  status           String    @default("OPEN") // OPEN | PENDING | ON_HOLD | RESOLVED | CLOSED
+  priority         String    @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  channel          String    @default("WEB") // WEB | EMAIL | CHAT
+  tags             String    @default("")
+  customerId       String
+  customer         Customer  @relation(fields: [customerId], references: [id])
+  categoryId       String
+  category         Category  @relation(fields: [categoryId], references: [id])
+  assigneeId       String?
+  assignee         Agent?    @relation(fields: [assigneeId], references: [id])
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now())
+  firstResponseDue DateTime
+  resolveDue       DateTime
+  firstResponseAt  DateTime?
+  resolvedAt       DateTime?
+  satisfaction     Int?
+  messages         Message[]
+  @@index([status])
+  @@index([assigneeId])
+}
+
+model Message {
+  id         String    @id @default(cuid())
+  ticketId   String
+  ticket     Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorType String    // AGENT | CUSTOMER | SYSTEM
+  agentId    String?
+  agent      Agent?    @relation(fields: [agentId], references: [id])
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  internal   Boolean   @default(false)
+  body       String
+  createdAt  DateTime  @default(now())
+  @@index([ticketId])
+}
+
+model CannedReply {
+  id      String @id @default(cuid())
+  titleEn String
+  titleAr String
+  bodyEn  String
+  bodyAr  String
+}
+
+model Article {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  titleEn    String
+  titleAr    String
+  bodyEn     String
+  bodyAr     String
+  views      Int      @default(0)
+  helpful    Int      @default(0)
+  notHelpful Int      @default(0)
+  published  Boolean  @default(true)
+  updatedAt  DateTime @default(now())
+}
+
+model Meta {
+  key   String @id
+  value String
+}

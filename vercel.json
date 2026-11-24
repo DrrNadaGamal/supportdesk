@@ -1,0 +1,6 @@
+{
+  "buildCommand": "prisma generate && DATABASE_URL=file:./demo.db prisma db push --skip-generate && DATABASE_URL=file:./demo.db tsx prisma/seed.ts && next build",
+  "headers": [
+    { "source": "/(.*)", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] }
+  ]
+}
