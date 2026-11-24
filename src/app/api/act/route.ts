@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { AGENT_COOKIE, CUSTOMER_COOKIE, currentAgent } from "@/lib/session";
 import { LOCALE_COOKIE } from "@/lib/i18n";
 import { dueDates, PRIORITIES, STATUSES } from "@/lib/sla";
+import { pullDb, pushDb, resetDemo } from "@/lib/dbsync";
 
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
@@ -20,22 +21,10 @@ function back(req: NextRequest, fallback: string) {
   return go(req, fallback);
 }
 
-export async function POST(req: NextRequest) {
-  const f = await req.formData();
+async function handle(req: NextRequest, f: FormData) {
   const intent = s(f, "intent");
   const secure = req.nextUrl.protocol === "https:";
   const cookieOpts = { path: "/", sameSite: "lax" as const, httpOnly: true, secure };
-
-  // Hosted demo: each serverless route has its own temporary copy of the demo
-  // database, so writes made on one page are not visible on the next. Writes
-  // are disabled there; run the app locally for the full interactive flow.
-  const READ_ONLY = !!process.env.VERCEL && !process.env.SUPPORTDESK_WRITABLE;
-  const WRITES = ["ticket_create", "customer_reply", "rate", "helpful", "ticket_reply", "ticket_update", "assign_me", "article_save", "article_delete", "canned_save", "canned_delete"];
-  if (READ_ONLY && WRITES.includes(intent)) {
-    const res = back(req, "/");
-    res.cookies.set("sd_notice", "readonly", { path: "/", maxAge: 10 });
-    return res;
-  }
 
   switch (intent) {
     case "locale": {
@@ -213,6 +202,20 @@ export async function POST(req: NextRequest) {
     case "canned_delete":
       await prisma.cannedReply.delete({ where: { id: s(f, "id") } }).catch(() => null);
       return go(req, "/app/canned");
+    case "reset_demo":
+      await resetDemo();
+      return go(req, "/app/settings?reset=1");
   }
   return go(req, "/app");
+}
+
+const WRITES = ["ticket_create", "customer_reply", "rate", "helpful", "ticket_reply", "ticket_update", "assign_me", "article_save", "article_delete", "canned_save", "canned_delete"];
+
+export async function POST(req: NextRequest) {
+  const f = await req.formData();
+  // Hosted demo: load the shared database first, and save it after any write.
+  await pullDb();
+  const res = await handle(req, f);
+  if (WRITES.includes(String(f.get("intent") ?? ""))) await pushDb();
+  return res;
 }

@@ -83,4 +83,6 @@ The demo login is role selection, not authentication. All names, companies and t
 
 ## Hosted demo
 
-Live demo: https://supportdesk-orpin-mu.vercel.app (sign in as any demo agent on `/login`). It runs on seeded data and is **read-only**: serverless hosting gives every route its own temporary copy of the demo database, so a ticket created on one page would not be visible on the next. Browsing, filtering, search, language switching and role-based views all work. To create tickets, reply, assign and edit the knowledge base, run it locally (steps above). The seeded timestamps are shifted on startup so the dashboard always looks current. A production deployment would point Prisma at Postgres.
+Live demo: https://supportdesk-orpin-mu.vercel.app (pick a demo agent on `/login`, or use the customer portal). It is fully interactive: create a ticket, reply, resolve, assign, edit the knowledge base.
+
+How the hosted persistence works, honestly: serverless routes on Vercel each get their own temporary filesystem, so SQLite cannot be shared between them directly. For the demo, the SQLite file is stored in a Vercel Blob store: each request loads the latest copy when it changed, and every write uploads the new copy (last writer wins, no locking). All visitors share one database, which resets to the original seed data after 6 hours, and an admin can reset it from Settings. This is a demo workaround, not an architecture to copy: a real deployment should point Prisma at Postgres. Locally the app uses a plain SQLite file as described above.

@@ -3,7 +3,6 @@ import { getLocale } from "@/lib/locale-server";
 import { currentCustomer } from "@/lib/session";
 import { t } from "@/lib/i18n";
 import { ensureFresh } from "@/lib/fresh";
-import DemoNotice from "@/components/DemoNotice";
 import Logo from "@/components/Logo";
 import LangToggle from "@/components/LangToggle";
 
@@ -13,7 +12,6 @@ export default async function PublicLayout({ children }: { children: React.React
   const customer = await currentCustomer();
   return (
     <>
-      <DemoNotice />
       <header className="pub-head">
         <div className="in">
           <Link href="/"><Logo name={t(locale, "appName")} /></Link>

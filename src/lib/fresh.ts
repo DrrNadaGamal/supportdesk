@@ -1,9 +1,14 @@
 import { prisma } from "./prisma";
+import { pullDb } from "./dbsync";
 
 // The demo data is seeded at build time. So the dashboard never looks stale,
 // every timestamp is shifted forward once per instance to match "now".
 let done = false;
+export function markStale() {
+  done = false;
+}
 export async function ensureFresh() {
+  await pullDb();
   if (done) return;
   done = true;
   try {
