@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { AGENT_COOKIE, CUSTOMER_COOKIE, currentAgent } from "@/lib/session";
 import { LOCALE_COOKIE } from "@/lib/i18n";
 import { dueDates, PRIORITIES, STATUSES } from "@/lib/sla";
-import { pullDb, pushDb, resetDemo } from "@/lib/dbsync";
+import { COOKIE, pullDb, pushDb, resetDemo } from "@/lib/dbsync";
 
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
@@ -216,6 +216,10 @@ export async function POST(req: NextRequest) {
   // Hosted demo: load the shared database first, and save it after any write.
   await pullDb();
   const res = await handle(req, f);
-  if (WRITES.includes(String(f.get("intent") ?? ""))) await pushDb();
+  const intent = String(f.get("intent") ?? "");
+  if (WRITES.includes(intent)) {
+    const v = await pushDb();
+    if (v) res.cookies.set(COOKIE, v, { path: "/", maxAge: 120, httpOnly: true, sameSite: "lax" });
+  }
   return res;
 }

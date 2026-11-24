@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { put, head } from "@vercel/blob";
+import { cookies } from "next/headers";
 
 // Hosted-demo persistence. On Vercel every serverless route has its own
 // temporary filesystem, so the SQLite demo database is kept as one file in a
@@ -24,7 +25,9 @@ function bundled() {
   return path.join(process.cwd(), "prisma", "demo.db");
 }
 
-async function push() {
+export const COOKIE = "sd_db";
+
+async function push(): Promise<string> {
   const body = fs.readFileSync(LOCAL);
   const blob = await put(BLOB_PATH, body, {
     access: "public",
@@ -35,6 +38,7 @@ async function push() {
   });
   const h = await head(blob.url);
   version = `${h.uploadedAt.getTime()}:${h.size}`;
+  return `${version}|${blob.url}`;
 }
 
 export function pullDb(): Promise<void> {
@@ -64,9 +68,22 @@ async function doPull() {
       await push();
       return;
     }
-    const v = `${h.uploadedAt.getTime()}:${h.size}`;
+    let v = `${h.uploadedAt.getTime()}:${h.size}`;
+    let url = h.url;
+    // read-your-writes: the browser carries the version its own last write produced,
+    // in case the blob metadata lookup has not caught up yet
+    try {
+      const c = (await cookies()).get(COOKIE)?.value;
+      if (c) {
+        const [cv, cu] = c.split("|");
+        if (Number(cv.split(":")[0]) > h.uploadedAt.getTime() && cu.includes(".blob.vercel-storage.com")) {
+          v = cv;
+          url = cu;
+        }
+      }
+    } catch {}
     if (v === version && fs.existsSync(LOCAL)) return;
-    const res = await fetch(`${h.url}?v=${encodeURIComponent(v)}`, { cache: "no-store" });
+    const res = await fetch(`${url}?v=${encodeURIComponent(v)}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`blob fetch ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     fs.writeFileSync(LOCAL, buf); // overwrite in place so open connections see it
@@ -77,18 +94,19 @@ async function doPull() {
   }
 }
 
-export async function pushDb() {
-  if (!syncEnabled()) return;
+export async function pushDb(): Promise<string | null> {
+  if (!syncEnabled()) return null;
   try {
-    await push();
+    return await push();
   } catch (e) {
     console.error("pushDb failed", e);
+    return null;
   }
 }
 
-export async function resetDemo() {
-  if (!syncEnabled()) return;
+export async function resetDemo(): Promise<string | null> {
+  if (!syncEnabled()) return null;
   fs.copyFileSync(bundled(), LOCAL);
   markStale();
-  await push();
+  return push();
 }
